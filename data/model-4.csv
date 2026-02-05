@@ -1,0 +1,8 @@
+,independent-variable,relation,dep-var,factor
+0,model_4_output,~,variable-1,0.48
+1,model_4_output,~,variable-2,0.33
+2,model_4_output,~,model_3_output,0.29
+3,model_4_output,~,variable-8,0.73
+4,model_4_output,~,model_2_output,0.46
+5,model_4_output,~,variable-11,0.22
+6,model_4_output,bau,,0.73

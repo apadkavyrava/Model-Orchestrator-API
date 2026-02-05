@@ -1,0 +1,12 @@
+,independent-variable,relation,dep-var,factor
+0,KPI-1,~,model_1_output,0.41
+1,KPI-1,~,model_2_output,0.44
+2,KPI-1,~,model_3_output,0.21
+3,KPI-1,~,variable-7,0.73
+4,KPI-1,~,variable-8,0.71
+5,KPI-1,~,variable-9,0.4
+6,KPI-1,~,variable-10,0.41
+7,KPI-1,~,variable-11,0.65
+8,KPI-1,~,variable-12,0.53
+9,KPI-1,~,model_4_output,0.61
+10,KPI-1,bau,,0.23
