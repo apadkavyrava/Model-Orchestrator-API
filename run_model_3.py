@@ -51,5 +51,3 @@ if __name__ == "__main__":
 
     print("\nFirst 5 rows:")
     print(df[["dt", "model_3_output"]].head().to_string())
-
-run_model(df, config_m3)
