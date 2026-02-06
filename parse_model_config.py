@@ -55,5 +55,5 @@ def parse_model_config(filepath: str) -> dict:
 
 if __name__ == "__main__":
     # Test with all model files
-    for f in ["Data/model-3.csv", "Data/model-2.csv", "Data/model-1.csv", "Data/model-4.csv", "Data/KPI.csv"]:
+    for f in ["data/model-3.csv", "data/model-2.csv", "data/model-1.csv", "data/model-4.csv", "data/KPI.csv"]:
         parse_model_config(f)

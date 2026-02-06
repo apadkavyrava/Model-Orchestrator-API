@@ -1,6 +1,6 @@
 import pandas as pd
 from load_data import load_input_data
-from Run_KPI import run_kpi
+from run_KPI import run_kpi
 
 
 def validate(df: pd.DataFrame) -> bool:
@@ -69,7 +69,7 @@ def validate(df: pd.DataFrame) -> bool:
 
 if __name__ == "__main__":
     # Step 1 — Load data
-    df = load_input_data("Data/input_data.csv")
+    df = load_input_data("data/input_data.csv")
 
     # Steps 2-5 — Run full pipeline (cascades automatically)
     df = run_kpi(df)
@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     # Step 7 — Save output
     if is_valid:
-        output_path = "Data/pipeline_output.csv"
+        output_path = "data/pipeline_output.csv"
         df.to_csv(output_path, index=False)
         print(f"\n  Output saved to: {output_path}")
         print(f"\n  Final columns: {list(df.columns)}")

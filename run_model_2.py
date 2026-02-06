@@ -1,11 +1,9 @@
-import pandas as pd
 from load_data import load_input_data
-from read_csv_structure import parse_model_config
-from model_body import evaluate_model, Variable
-from run_model_3 import run_model
+from parse_model_config import parse_model_config
+from model_runner import run_model
 
 
-def run_model_2(df: pd.DataFrame) -> pd.DataFrame:
+def run_model_2(df):
     """
     Step 3 — Run Model 2
     Depends on Model 3, so runs it first if model_3_output is missing.
@@ -13,17 +11,15 @@ def run_model_2(df: pd.DataFrame) -> pd.DataFrame:
 
     # Dependency: ensure model_3_output exists
     if "model_3_output" not in df.columns:
-        config_m3 = parse_model_config("Data/model-3.csv")
-        df = run_model(df, config_m3)
+        df = run_model(df, parse_model_config("data/model-3.csv"))
 
-    config = parse_model_config("Data/model-2.csv")
-    df = run_model(df, config)
+    df = run_model(df, parse_model_config("data/model-2.csv"))
 
     return df
 
 
 if __name__ == "__main__":
-    df = load_input_data("Data/input_data.csv")
+    df = load_input_data("data/input_data.csv")
     df = run_model_2(df)
 
     print("\nFirst 5 rows:")

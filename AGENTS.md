@@ -4,7 +4,7 @@
 
 This project orchestrates inference outputs from multiple ML models into a unified KPI response. Each model is a **linear combination** of input variables (and/or outputs of other models) plus a baseline constant (BAU). The goal is to productionize this pipeline as a Flask API.
 
-**Current state:** Early development. Steps 1-3 (load data, Model 3, Model 2) were implemented and tested in a prior Claude thread but only partially committed to the repo. Steps 4-5 (Models 1 & 4, KPI) and the Flask API are not built yet.
+**Current state:** Full pipeline working end-to-end. All 4 models + KPI run successfully with validation. Flask API not built yet.
 
 ## Prior Thread Context
 
@@ -18,26 +18,6 @@ A detailed design session occurred in [this Claude thread](https://claude.ai/sha
 5. **Parse model configs one at a time** (not all upfront) — parse config right before running that model, for fail-early behavior
 6. **Each model step is its own runner script** — `run_model_3.py`, `run_model_2.py`, etc.
 
-### Agreed Restructuring Plan (partially implemented)
-The thread agreed to restructure so that shared logic lives in a helpers module:
-- **`model_helpers.py`** — should hold both `parse_model_config()` AND `run_model()` (currently `parse_model_config` lives in `read_csv_structure.py` and `run_model` lives in `run_model_3.py`)
-- **`run_model_2.py`** — was created in the thread but NOT committed to repo
-- **`model_body.py`** — was cleaned up (example code removed) in the thread but the committed version still has the old code
-
-### What Was Completed in the Thread (but not all committed)
-- Step 1: load_data.py — committed and working
-- Step 2: run_model_3.py with generic `run_model()` — committed (but has line 55 bug)
-- Step 3: run_model_2.py — created and tested, NOT committed
-- Restructuring (move `run_model` to helpers) — discussed and tested, NOT committed
-
-### What Remains To Be Built
-- Step 4: Model 1 & Model 4 runner (can run in parallel)
-- Step 5: KPI runner
-- Full orchestration pipeline script
-- Flask API
-- Tests
-- requirements.txt
-
 ## Architecture
 
 ### Model Dependency Graph (execution order matters)
@@ -47,75 +27,88 @@ Raw Input (13 variables)
         |
         v
    +---------+
-   | Model 3  |  <-- depends on raw variables only (must run first)
+   | Model 3  |  <-- Level 0: depends on raw variables only (must run first)
    +----+-----+
         |
    +----+-----+
    v          v
 +---------+ +---------+
-| Model 2  | |         |
+| Model 2  | |         |  <-- Level 1: depends on Model 3
 +----+-----+ |         |
      |       |         |
   +--+---+   |         |
   v      v   v         |
 +------+ +---------+   |
-|Mod 1 | | Model 4  |  |
+|Mod 1 | | Model 4  |  |  <-- Level 2: both depend on Models 2 & 3 (can run in parallel)
 +--+---+ +----+-----+  |
    |          |         |
    +----+-----+         |
         v               |
    +---------+          |
-   |  KPI-1   | <-------+
+   |  KPI-1   | <-------+  <-- Level 3: depends on all four model outputs
    +---------+
 ```
 
-### Exact Model Formulas (agreed in prior thread)
+### Exact Model Formulas
 
 **Step 1 — Load Input Data:**
 Load `data/input_data.csv` once. 60 rows, 13 variables, daily from 2020-01-01 to 2020-02-29.
 
-**Step 2 — Model 3** (no model dependencies):
+**Step 2 — Model 3** (Level 0, no model dependencies):
 ```
 model_3_output = 0.21*var1 + 0.59*var2 + 0.41*var4 + 0.38*var6 + 0.49*var8 + 0.62*var9 + 0.21
 ```
 
-**Step 3 — Model 2** (depends on Model 3):
+**Step 3 — Model 2** (Level 1, depends on Model 3):
 ```
 model_2_output = 0.80*model_3_output + 0.46*var2 + 0.80*var3 + 0.58*var4 + 0.38*var5 + 0.61*var6 + 0.74
 ```
 
-**Step 4a — Model 1** (depends on Models 2 & 3):
+**Step 4a — Model 1** (Level 2, depends on Models 2 & 3):
 ```
 model_1_output = 0.67*model_2_output + 0.28*model_3_output + 0.53*var1 + 0.35
 ```
 
-**Step 4b — Model 4** (depends on Models 2 & 3, parallel with Model 1):
+**Step 4b — Model 4** (Level 2, depends on Models 2 & 3, parallel with Model 1):
 ```
 model_4_output = 0.48*var1 + 0.33*var2 + 0.29*model_3_output + 0.73*var8 + 0.46*model_2_output + 0.22*var11 + 0.73
 ```
 
-**Step 5 — KPI** (depends on all four models):
+**Step 5 — KPI** (Level 3, depends on all four models):
 ```
 KPI-1 = 0.41*model_1 + 0.44*model_2 + 0.21*model_3 + 0.61*model_4 + 0.73*var7 + 0.71*var8 + 0.40*var9 + 0.41*var10 + 0.65*var11 + 0.53*var12 + 0.23
 ```
 
 **Step 6 — Validate:**
-After each step: no NaNs, outputs are numeric and finite. Halt on failure.
+After full pipeline: check all 5 output columns exist, no NaNs, no infinities, numeric, 60 rows preserved.
 
 **Step 7 — Output:**
 Final dataset = original input + 5 new columns: `model_3_output`, `model_2_output`, `model_1_output`, `model_4_output`, `KPI-1`.
 
-## File Structure (current repo state)
+## File Structure
 
 ```
 .
 ├── AGENTS.md                  # This file
 ├── README.md                  # Brief project description with flow diagram
 ├── .gitignore                 # Ignores __pycache__/ and data/.ipynb_checkpoints/
+│
+│   # Core modules (shared logic)
 ├── load_data.py               # Step 1: load & validate input CSV
-├── read_csv_structure.py      # Parse model config CSVs (to be renamed model_helpers.py)
+├── parse_model_config.py      # Parse model config CSVs into dicts
 ├── model_body.py              # Core model evaluation (linear combination)
-├── run_model_3.py             # Step 2 runner + generic run_model() (to be restructured)
+├── model_runner.py            # Generic run_model() function
+│
+│   # Step runners (one per model)
+├── run_model_3.py             # Step 2: run Model 3
+├── run_model_2.py             # Step 3: run Model 2 (depends on Model 3)
+├── run_model_1.py             # Step 4a: run Model 1 (depends on Models 2 & 3)
+├── run_model_4.py             # Step 4b: run Model 4 (depends on Models 2 & 3)
+├── run_KPI.py                 # Step 5: run KPI (depends on all four models)
+│
+│   # Pipeline
+├── Pipeline_validation.py     # Steps 1-7: full pipeline + validation + save output
+│
 └── data/
     ├── input_data.csv         # Raw input: daily time series, 13 variables
     ├── input_data.xlsx        # Same data as Excel (original source)
@@ -125,20 +118,6 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
     ├── model-4.csv            # Model 4 config
     ├── KPI.csv                # KPI-1 config
     └── Untitled.ipynb         # Exploratory notebook (not part of pipeline)
-```
-
-### Target File Structure (agreed in prior thread)
-```
-.
-├── model_helpers.py           # parse_model_config() + run_model() (shared logic)
-├── model_body.py              # evaluate_model() + Variable namedtuple
-├── load_data.py               # load_input_data()
-├── run_model_3.py             # Step 2 runner
-├── run_model_2.py             # Step 3 runner (NOT yet in repo)
-├── run_model_1.py             # Step 4a runner (NOT yet built)
-├── run_model_4.py             # Step 4b runner (NOT yet built)
-├── run_kpi.py                 # Step 5 runner (NOT yet built)
-└── data/                      # (unchanged)
 ```
 
 ## Key Modules
@@ -153,7 +132,7 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
 - Sorts by date, returns clean DataFrame
 - Note: `variable-13` exists in input but is not used by any model or KPI
 
-### `read_csv_structure.py` — Model Config Parser (to become `model_helpers.py`)
+### `parse_model_config.py` — Model Config Parser
 - **Function:** `parse_model_config(filepath) -> dict`
 - Parses model CSV files into:
   ```python
@@ -165,7 +144,6 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
   ```
 - Rows with `relation == "~"` are coefficient terms
 - Row with `relation == "bau"` is the baseline constant
-- `run_model()` should also live here (per restructuring plan)
 
 ### `model_body.py` — Core Model Evaluation
 - **Types:** `Variable = namedtuple('Variable', 'name factor')`
@@ -175,14 +153,21 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
 - **Caution:** mutates `input_data` by adding a `prediction` column — always pass `df.copy()`
 - BAU is NOT added here — it's added in `run_model()`
 
-### `run_model_3.py` — Orchestration Runner (Step 2)
+### `model_runner.py` — Generic Model Runner
 - **Function:** `run_model(df, config) -> pd.DataFrame`
-- Generic runner: converts config coefficients dict to `Variable` namedtuples, calls `evaluate_model`, adds BAU
-- Adds result as a new column named `config["model_name"]` to the DataFrame
-- Validates no NaN in output
-- **Bug:** Line 55 calls `run_model(df, config_m3)` outside `if __name__` guard — runs on every import
+- Bridges `parse_model_config` output to `evaluate_model`:
+  - Converts config coefficients dict to `Variable` namedtuples
+  - Calls `evaluate_model(variables, df.copy())`
+  - Adds BAU to prediction
+  - Stores result as new column `df[config["model_name"]]`
+- Validates: required input columns exist, no NaN in output
 
-### Integration Flow (how the pieces connect)
+### `Pipeline_validation.py` — Full Pipeline + Validation
+- **Function:** `validate(df) -> bool`
+- Checks: all 5 output columns present, no NaNs, no infinities, numeric types, 60 rows preserved
+- Runs full pipeline via `run_kpi()` cascade, validates, saves to `Data/pipeline_output.csv`
+
+### Integration Flow
 ```
 CSV file --> parse_model_config() --> config dict
                                         |
@@ -193,6 +178,20 @@ config["coefficients"] --> [Variable namedtuples] --> evaluate_model(variables, 
                                               prediction + config["bau"]
                                                            |
                                               stored as df[config["model_name"]]
+```
+
+### Import Graph
+```
+model_body.py          <-- no dependencies
+parse_model_config.py  <-- no dependencies
+load_data.py           <-- no dependencies
+model_runner.py        <-- imports from model_body, parse_model_config
+run_model_3.py         <-- imports from load_data, parse_model_config, model_runner
+run_model_2.py         <-- imports from load_data, parse_model_config, model_runner
+run_model_1.py         <-- imports from load_data, parse_model_config, model_runner, run_model_2
+run_model_4.py         <-- imports from load_data, parse_model_config, model_runner, run_model_2
+run_KPI.py             <-- imports from load_data, parse_model_config, model_runner, run_model_1, run_model_4
+Pipeline_validation.py <-- imports from load_data, Run_KPI
 ```
 
 ## Data Formats
@@ -222,17 +221,22 @@ config["coefficients"] --> [Variable namedtuples] --> evaluate_model(variables, 
 
 ## Known Issues
 
-1. **Bug in `run_model_3.py:55`** — `run_model(df, config_m3)` is called outside the `if __name__` guard, executes on every import
-2. **`model_body.py` mutates input** — `evaluate_model` adds a `prediction` column to `input_data` directly; always pass `.copy()`
-3. **Path casing inconsistency** — some code uses `Data/` but filesystem directory is `data/`
-4. **Restructuring incomplete** — `run_model()` should move to helpers module, `read_csv_structure.py` should become `model_helpers.py`
-5. **No tests, no requirements.txt, no Flask API yet**
+1. **`model_body.py` mutates input** — `evaluate_model` adds a `prediction` column to `input_data` directly; always pass `.copy()`
+2. **Path casing** — code uses `Data/` which works on macOS (case-insensitive) but would break on Linux
+3. **No tests, no requirements.txt, no Flask API yet**
+
+## What Remains To Be Built
+
+- Flask API
+- Tests
+- requirements.txt
 
 ## Conventions
 
 - Step-based logging with `print()` statements (e.g., "STEP 1 — Input Data Loaded Successfully")
 - Model configs are CSV files, not hardcoded — all coefficients/BAU read from CSVs at runtime
 - The shared DataFrame accumulates columns as models run (each model adds its output column)
-- Model evaluation (`model_body.py`) is separated from orchestration (`run_model`)
-- Each step gets its own runner script that chains all prior dependencies
+- Core logic split into 4 modules: `load_data`, `parse_model_config`, `model_body`, `model_runner`
+- Each model step has its own runner with dependency checking (auto-runs upstream models if needed)
+- Runner files have `if __name__ == "__main__"` blocks for standalone testing — never put code outside that guard
 - Parse model configs one at a time, right before running that model

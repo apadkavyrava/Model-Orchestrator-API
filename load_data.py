@@ -1,5 +1,5 @@
 import pandas as pd
-import sys
+
 
 def load_input_data(filepath: str) -> pd.DataFrame:
     """
@@ -47,14 +47,11 @@ def load_input_data(filepath: str) -> pd.DataFrame:
     # Print summary
     print("STEP 1 — Input Data Loaded Successfully")
 
-
     return df
 
 
 if __name__ == "__main__":
-    filepath = "Data/input_data.csv"
+    filepath = "data/input_data.csv"
     df = load_input_data(filepath)
     print("\nFirst 5 rows:")
     print(df.head().to_string())
-
-

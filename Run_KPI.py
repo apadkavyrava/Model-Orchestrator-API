@@ -1,13 +1,11 @@
-import pandas as pd
 from load_data import load_input_data
-from read_csv_structure import parse_model_config
-from model_body import evaluate_model, Variable
-from run_model_3 import run_model
+from parse_model_config import parse_model_config
+from model_runner import run_model
 from run_model_1 import run_model_1
 from run_model_4 import run_model_4
 
 
-def run_kpi(df: pd.DataFrame) -> pd.DataFrame:
+def run_kpi(df):
     """
     Step 5 — Run KPI
     Depends on all four models.
@@ -21,14 +19,13 @@ def run_kpi(df: pd.DataFrame) -> pd.DataFrame:
     if "model_4_output" not in df.columns:
         df = run_model_4(df)
 
-    config = parse_model_config("Data/KPI.csv")
-    df = run_model(df, config)
+    df = run_model(df, parse_model_config("data/KPI.csv"))
 
     return df
 
 
 if __name__ == "__main__":
-    df = load_input_data("Data/input_data.csv")
+    df = load_input_data("data/input_data.csv")
     df = run_kpi(df)
 
     print("\nFirst 5 rows:")
