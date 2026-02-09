@@ -71,19 +71,18 @@ Input data (13 variables, 60 rows)
 ## Project structure
 
 ```
-Model-Orchestrator-API/
-├── Data/
+Model-Orchestrator-API/        
+├── Data/                      # model configs: dependencies and coefficients
 │   ├── input_data.csv         # raw input: daily time series, 13 variables
 │   ├── model-1.csv
 │   ├── model-2.csv
 │   ├── model-3.csv
 │   ├── model-4.csv
-│   └── KPI.csv                # model configs: dependencies and coefficients
+│   └── KPI.csv                
 │
 ├── app.py                     # Flask entry point with /health and /run-pipeline endpoints
 ├── model_body.py              # helper: core prediction (linear combination)
 ├── model_runner.py            # helper: takes a DataFrame and a parsed model config
-├── parse_model_config.py      # helper: parses model CSV config to dict
 ├── load_data.py               # step 1: load and validate input data
 ├── run_model_3.py             # step 2: run model-3 (no dependency)
 ├── run_model_2.py             # step 3: run model-2 (depends on model-3)
@@ -91,6 +90,8 @@ Model-Orchestrator-API/
 ├── run_model_4.py             # step 4b: run model-4 (depends on model-3 and model-2)
 ├── run_kpi.py                 # step 5: run KPI (depends on all four models)
 ├── orchestrator.py            # runs full pipeline in topological order
+├── parse_model_config.py      # test helper: parses model CSV config to dict for single model run
+├── pipeline_validation.py     # test helper: test if pipelines work as expected
 ├── requirements.txt           # dependencies (flask, pandas)
 └── README.md
 ```
