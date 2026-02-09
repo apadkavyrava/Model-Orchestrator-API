@@ -4,7 +4,7 @@
 
 This project orchestrates inference outputs from multiple ML models into a unified KPI response. Each model is a **linear combination** of input variables (and/or outputs of other models) plus a baseline constant (BAU). The goal is to productionize this pipeline as a Flask API.
 
-**Current state:** Full pipeline working end-to-end. All 4 models + KPI run successfully with validation. Flask API not built yet.
+**Current state:** Full pipeline working end-to-end. All 4 models + KPI run successfully with validation. Flask API available via `app.py`.
 
 ## Prior Thread Context
 
@@ -85,6 +85,36 @@ After full pipeline: check all 5 output columns exist, no NaNs, no infinities, n
 **Step 7 — Output:**
 Final dataset = original input + 5 new columns: `model_3_output`, `model_2_output`, `model_1_output`, `model_4_output`, `KPI-1`.
 
+## Flask API
+
+### Setup
+```bash
+pip install -r requirements.txt
+python app.py
+```
+Server starts on `http://localhost:5001`.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Returns `{"status": "ok"}` — sanity check that the server is running |
+| GET | `/run-pipeline` | Calls `run_pipeline()`, returns full DataFrame as JSON |
+
+### `/run-pipeline` response shape
+```json
+{
+  "status": "success",
+  "rows": 60,
+  "data": [
+    {"dt": "2020-01-01", "variable-1": 42, ..., "model_3_output": 150.68, ..., "KPI-1": 639.82},
+    ...
+  ]
+}
+```
+
+On error, returns HTTP 500 with `{"status": "error", "message": "..."}`.
+
 ## File Structure
 
 ```
@@ -92,6 +122,10 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
 ├── AGENTS.md                  # This file
 ├── README.md                  # Brief project description with flow diagram
 ├── .gitignore                 # Ignores __pycache__/ and data/.ipynb_checkpoints/
+├── requirements.txt           # Python dependencies (flask, pandas)
+│
+│   # Flask API
+├── app.py                     # Flask app with /health and /run-pipeline endpoints
 │
 │   # Core modules (shared logic)
 ├── load_data.py               # Step 1: load & validate input CSV
@@ -107,6 +141,7 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
 ├── run_KPI.py                 # Step 5: run KPI (depends on all four models)
 │
 │   # Pipeline
+├── orchestrator.py            # run_pipeline(): full orchestration in topological order
 ├── Pipeline_validation.py     # Steps 1-7: full pipeline + validation + save output
 │
 └── data/
@@ -146,8 +181,8 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
 - Row with `relation == "bau"` is the baseline constant
 
 ### `model_body.py` — Core Model Evaluation
-- **Types:** `Variable = namedtuple('Variable', 'name factor')`
-- **Function:** `evaluate_model(dependent_variables_list, input_data) -> DataFrame[dt, prediction]`
+- **Function:** `evaluate_model(coefficients, input_data) -> DataFrame[dt, prediction]`
+- `coefficients`: dict of `{variable_name: factor}` — passed directly from parsed config
 - Computes: `prediction = sum(variable_i * factor_i)` for each row
 - Returns only `dt` and `prediction` columns
 - **Caution:** mutates `input_data` by adding a `prediction` column — always pass `df.copy()`
@@ -156,11 +191,11 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
 ### `model_runner.py` — Generic Model Runner
 - **Function:** `run_model(df, config) -> pd.DataFrame`
 - Bridges `parse_model_config` output to `evaluate_model`:
-  - Converts config coefficients dict to `Variable` namedtuples
-  - Calls `evaluate_model(variables, df.copy())`
+  - Passes config coefficients dict directly to `evaluate_model(coefficients, df.copy())`
   - Adds BAU to prediction
   - Stores result as new column `df[config["model_name"]]`
 - Validates: required input columns exist, no NaN in output
+- No top-level dependency on `parse_model_config` — callers are responsible for parsing configs
 
 ### `Pipeline_validation.py` — Full Pipeline + Validation
 - **Function:** `validate(df) -> bool`
@@ -171,13 +206,13 @@ Final dataset = original input + 5 new columns: `model_3_output`, `model_2_outpu
 ```
 CSV file --> parse_model_config() --> config dict
                                         |
-config["coefficients"] --> [Variable namedtuples] --> evaluate_model(variables, df.copy())
-                                                           |
-                                                    df[dt, prediction]
-                                                           |
-                                              prediction + config["bau"]
-                                                           |
-                                              stored as df[config["model_name"]]
+config["coefficients"] --> evaluate_model(coefficients, df.copy())
+                                        |
+                                 df[dt, prediction]
+                                        |
+                           prediction + config["bau"]
+                                        |
+                           stored as df[config["model_name"]]
 ```
 
 ### Import Graph
@@ -185,9 +220,9 @@ config["coefficients"] --> [Variable namedtuples] --> evaluate_model(variables, 
 model_body.py          <-- no dependencies
 parse_model_config.py  <-- no dependencies
 load_data.py           <-- no dependencies
-model_runner.py        <-- imports from model_body, parse_model_config
-run_model_3.py         <-- imports from load_data, parse_model_config, model_runner
-run_model_2.py         <-- imports from load_data, parse_model_config, model_runner
+model_runner.py        <-- imports from model_body
+run_model_3.py         <-- imports from parse_model_config, model_runner
+run_model_2.py         <-- imports from load_data, parse_model_config, model_runner, run_model_3
 run_model_1.py         <-- imports from load_data, parse_model_config, model_runner, run_model_2
 run_model_4.py         <-- imports from load_data, parse_model_config, model_runner, run_model_2
 run_KPI.py             <-- imports from load_data, parse_model_config, model_runner, run_model_1, run_model_4
@@ -219,17 +254,36 @@ Pipeline_validation.py <-- imports from load_data, Run_KPI
 - No `requirements.txt` or virtual environment config exists yet
 - **macOS** (darwin)
 
+## Changelog
+
+### Refactoring — Consistency & Redundancy Cleanup
+
+**1. `run_model_3.py` — Added reusable `run_model_3(df)` function**
+- Was the only runner without a callable function (just a `__main__` script)
+- Now consistent with `run_model_1`, `run_model_2`, `run_model_4` — all expose a `run_model_N(df)` function
+- Model 3 is the base model (no dependencies)
+
+**2. `run_model_2.py` — Uses `run_model_3(df)` for its dependency**
+- Previously inlined `run_model(df, parse_model_config("data/model-3.csv"))` to run Model 3
+- Now calls `run_model_3(df)`, matching how `run_model_1` and `run_model_4` call `run_model_2(df)`
+
+**3. `model_body.py` / `model_runner.py` — Eliminated dict→namedtuple→dict round-trip**
+- `evaluate_model` now accepts a `coefficients` dict directly instead of `Variable` namedtuples
+- Removed the `Variable` namedtuple and `collections` import from `model_body.py`
+- `model_runner.py` passes the coefficients dict straight through — no conversion step
+
+**4. `model_runner.py` — Removed unused production import**
+- `parse_model_config` moved from top-level import into `__main__` block (only used there for standalone testing)
+
 ## Known Issues
 
 1. **`model_body.py` mutates input** — `evaluate_model` adds a `prediction` column to `input_data` directly; always pass `.copy()`
 2. **Path casing** — code uses `Data/` which works on macOS (case-insensitive) but would break on Linux
-3. **No tests, no requirements.txt, no Flask API yet**
+3. **No tests yet**
 
 ## What Remains To Be Built
 
-- Flask API
 - Tests
-- requirements.txt
 
 ## Conventions
 
