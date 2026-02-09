@@ -1,6 +1,5 @@
 import pandas as pd
-from parse_model_config import parse_model_config
-from model_body import evaluate_model, Variable
+from model_body import evaluate_model
 
 
 def run_model(df: pd.DataFrame, config: dict) -> pd.DataFrame:
@@ -20,11 +19,8 @@ def run_model(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     if missing:
         raise ValueError(f"{model_name} missing input columns: {missing}")
 
-    # Convert coefficients dict to list of Variable namedtuples
-    variables = [Variable(name=var, factor=coef) for var, coef in coefficients.items()]
-
     # Run model body
-    result = evaluate_model(variables, df.copy())
+    result = evaluate_model(coefficients, df.copy())
 
     # Add bau and store as new column
     df[model_name] = result["prediction"].values + bau
@@ -42,6 +38,7 @@ def run_model(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
 if __name__ == "__main__":
     from load_data import load_input_data
+    from parse_model_config import parse_model_config
 
     df = load_input_data("data/input_data.csv")
     config = parse_model_config("data/model-3.csv")
